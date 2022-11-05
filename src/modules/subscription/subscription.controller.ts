@@ -1,22 +1,30 @@
-import { Controller } from '@nestjs/common';
-import { MessagePattern, EventPattern } from '@nestjs/microservices';
-
-import { SubscriptionService } from './subscription.service';
+import {
+    Controller,
+    UseInterceptors,
+    ClassSerializerInterceptor,
+    Inject,
+} from '@nestjs/common';
+import { Ctx, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
 import { CreateSubscriptionDto } from './dto';
+import { SubscriptionService } from './subscription.service';
 
-@Controller('subscription')
-export class SubscriptionController {
+@Controller('subscribers')
+@UseInterceptors(ClassSerializerInterceptor)
+export default class SubscribersController {
     constructor(
-        private readonly subscriptionService: SubscriptionService,
+        @Inject('SUBSCRIBERS_SERVICE')
+        private readonly subscribersService: SubscriptionService,
     ) {}
 
-    @MessagePattern({ cmd: 'get-all-subscribers' })
-    getAllSubscriptions() {
-        return this.subscriptionService.getAllSubscribers();
-    }
 
-    @EventPattern({ cmd: 'add-subscriber' })
-    addSubscriber(dto: CreateSubscriptionDto) {
-        return this.subscriptionService.addSubscriber(dto);
+    @MessagePattern({ cmd: 'add-subscriber' })
+    async addSubscriber(@Payload() subscriber: CreateSubscriptionDto, @Ctx() context: RmqContext) {
+        const newSubscriber = await this.subscribersService.addSubscriber(subscriber);
+
+        const channel = context.getChannelRef();
+        const originalMsg = context.getMessage();
+        channel.ack(originalMsg);
+
+        return newSubscriber;
     }
 }
